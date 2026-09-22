@@ -56,3 +56,19 @@ class RejectRecord(Base):
     stop_name: Mapped[str] = mapped_column(String(80))
     reason: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+OUTCOME_PACKED = "packed"
+OUTCOME_REJECTED = "rejected"
+
+
+class PackEvent(Base):
+    """装袋运行事件：每次装袋成功或业务拒绝旁路追加一条，只增不删。"""
+
+    __tablename__ = "pack_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    route_id: Mapped[int] = mapped_column(ForeignKey("delivery_routes.id"))
+    bag_count: Mapped[int] = mapped_column(Integer)
+    reject_count: Mapped[int] = mapped_column(Integer)
+    outcome: Mapped[str] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

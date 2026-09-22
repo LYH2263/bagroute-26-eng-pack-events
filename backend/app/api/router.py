@@ -3,10 +3,20 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.models import BagItem, DeliveryRoute, PackBag, RejectRecord, SubscriberStop
+from app.models.models import (
+    OUTCOME_PACKED,
+    OUTCOME_REJECTED,
+    BagItem,
+    DeliveryRoute,
+    PackBag,
+    PackEvent,
+    RejectRecord,
+    SubscriberStop,
+)
 from app.schemas.schemas import (
     BagItemOut,
     BagOut,
+    EventOut,
     PackRequest,
     RejectOut,
     RouteOut,
@@ -41,6 +51,21 @@ def pack(body: PackRequest, db: Session = Depends(get_db)):
     route = db.get(DeliveryRoute, body.route_id)
     if not route:
         raise HTTPException(404, "路线不存在")
+    stops = db.scalars(
+        select(SubscriberStop).where(SubscriberStop.route_id == route.id).order_by(SubscriberStop.seq)
+    ).all()
+    if not stops:
+        # 业务拒绝：空路线无法装袋，旁路落一条 rejected 事件，不动既有袋明细
+        db.add(
+            PackEvent(
+                route_id=route.id,
+                bag_count=0,
+                reject_count=0,
+                outcome=OUTCOME_REJECTED,
+            )
+        )
+        db.commit()
+        raise HTTPException(422, "路线无订户点，无法装袋")
     # clear previous pack for route
     old_bags = db.scalars(select(PackBag).where(PackBag.route_id == route.id)).all()
     for b in old_bags:
@@ -52,9 +77,6 @@ def pack(body: PackRequest, db: Session = Depends(get_db)):
         db.delete(r)
     db.flush()
 
-    stops = db.scalars(
-        select(SubscriberStop).where(SubscriberStop.route_id == route.id).order_by(SubscriberStop.seq)
-    ).all()
     items = [
         StopItem(s.id, s.seq, s.weight_kg, s.volume_l, s.name) for s in stops
     ]
@@ -89,6 +111,15 @@ def pack(body: PackRequest, db: Session = Depends(get_db)):
                 reason=reason,
             )
         )
+    # 旁路落一条运行事件；事件只追加，不替代袋明细与拒收表
+    db.add(
+        PackEvent(
+            route_id=route.id,
+            bag_count=len(out_bags),
+            reject_count=len(result.rejects),
+            outcome=OUTCOME_PACKED,
+        )
+    )
     db.commit()
     return [
         BagOut(
@@ -141,6 +172,16 @@ def bags(db: Session = Depends(get_db)):
 @api_router.get("/rejects", response_model=list[RejectOut])
 def rejects(db: Session = Depends(get_db)):
     return db.scalars(select(RejectRecord).order_by(RejectRecord.id.desc())).all()
+
+
+@api_router.get("/events", response_model=list[EventOut])
+def events(route_id: int, db: Session = Depends(get_db)):
+    """按路线倒序查询装袋运行事件（只读）。"""
+    return db.scalars(
+        select(PackEvent)
+        .where(PackEvent.route_id == route_id)
+        .order_by(PackEvent.created_at.desc(), PackEvent.id.desc())
+    ).all()
 
 
 @api_router.get("/weights", response_model=list[WeightOut])

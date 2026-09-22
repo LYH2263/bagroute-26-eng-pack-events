@@ -51,6 +51,17 @@ class PackRequest(BaseModel):
     route_id: int
 
 
+class EventOut(BaseModel):
+    id: int
+    route_id: int
+    bag_count: int
+    reject_count: int
+    outcome: str
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+
 class WeightOut(BaseModel):
     bag_id: int
     bag_index: int

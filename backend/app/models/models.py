@@ -5,6 +5,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
+# PackEvent.outcome 取值
+PACK_OUTCOME_PACKED = "packed"
+PACK_OUTCOME_REJECTED = "rejected"
+
 
 class DeliveryRoute(Base):
     __tablename__ = "delivery_routes"
@@ -55,4 +59,16 @@ class RejectRecord(Base):
     stop_id: Mapped[int] = mapped_column(Integer)
     stop_name: Mapped[str] = mapped_column(String(80))
     reason: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class PackEvent(Base):
+    """装袋运行事件：每次执行 /pack 旁路追加一条，不替代袋明细与拒收表。"""
+
+    __tablename__ = "pack_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    route_id: Mapped[int] = mapped_column(ForeignKey("delivery_routes.id"))
+    bag_count: Mapped[int] = mapped_column(Integer)
+    reject_count: Mapped[int] = mapped_column(Integer)
+    outcome: Mapped[str] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

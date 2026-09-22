@@ -3,10 +3,19 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.models import BagItem, DeliveryRoute, PackBag, RejectRecord, SubscriberStop
+from app.models.models import (
+    BagItem,
+    DeliveryRoute,
+    PackBag,
+    PackEvent,
+    RejectRecord,
+    SubscriberStop,
+)
+from app.models.models import PACK_OUTCOME_PACKED, PACK_OUTCOME_REJECTED
 from app.schemas.schemas import (
     BagItemOut,
     BagOut,
+    PackEventOut,
     PackRequest,
     RejectOut,
     RouteOut,
@@ -89,6 +98,17 @@ def pack(body: PackRequest, db: Session = Depends(get_db)):
                 reason=reason,
             )
         )
+    # 旁路追加一条运行事件：重复装袋只清袋明细/拒收表，事件表始终追加不覆盖
+    db.add(
+        PackEvent(
+            route_id=route.id,
+            bag_count=len(result.bags),
+            reject_count=len(result.rejects),
+            outcome=(
+                PACK_OUTCOME_REJECTED if result.rejects else PACK_OUTCOME_PACKED
+            ),
+        )
+    )
     db.commit()
     return [
         BagOut(
@@ -141,6 +161,17 @@ def bags(db: Session = Depends(get_db)):
 @api_router.get("/rejects", response_model=list[RejectOut])
 def rejects(db: Session = Depends(get_db)):
     return db.scalars(select(RejectRecord).order_by(RejectRecord.id.desc())).all()
+
+
+@api_router.get("/events", response_model=list[PackEventOut])
+def events(route_id: int | None = None, db: Session = Depends(get_db)):
+    """运行事件只读查询：按路线倒序（route_id 大的在前），同路线新事件在前。"""
+    q = select(PackEvent).order_by(
+        PackEvent.route_id.desc(), PackEvent.created_at.desc(), PackEvent.id.desc()
+    )
+    if route_id is not None:
+        q = q.where(PackEvent.route_id == route_id)
+    return db.scalars(q).all()
 
 
 @api_router.get("/weights", response_model=list[WeightOut])

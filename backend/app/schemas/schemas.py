@@ -59,3 +59,13 @@ class WeightOut(BaseModel):
     volume_l: float
     fill_weight_pct: float
     fill_volume_pct: float
+
+
+class PackEventOut(BaseModel):
+    id: int
+    route_id: int
+    bag_count: int
+    reject_count: int
+    outcome: str
+    created_at: datetime
+    model_config = {"from_attributes": True}
